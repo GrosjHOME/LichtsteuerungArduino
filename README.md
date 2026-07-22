@@ -25,7 +25,7 @@ erfolgt weiterhin **extern über Relais**.
 ## Hardware-Konzept
 
 - **Arduino Mega 2560**, Anbindung ans Hausnetz über **Ethernet-Shield** (SPI, W5500 empfohlen) für Remote-Funktionen.
-- **Ausgänge (32 Relais):** 4× **8-Kanal-Relaismodul** (5 V, Stiftleiste) **direkt an native Arduino-Pins**. Diese Module sind meist **active-LOW** (IN = LOW → Relais an) → der Sketch invertiert die Ausgänge. Relaisspulen über **separate 5-V-Versorgung** (JD-VCC), nicht aus dem Arduino-Regler.
+- **Ausgänge (32 Relais):** 4× **8-Kanal-Relaismodul** (5 V, Stiftleiste) **direkt an native Arduino-Pins**, **active-HIGH** (IN = HIGH → Relais an, wie bei der SPS). `L29–L32` liegen auf `D5–D8`, damit die SPI-Pins `D50–D53` fürs Ethernet-Shield frei bleiben. Relaisspulen über **separate 5-V-Versorgung** (JD-VCC), nicht aus dem Arduino-Regler.
 - **Eingänge (32 Kanäle):** 1× DIN-Board mit **2× MCP23017** (I²C, Schraubklemmen) — passt zu den Interface-Relais mit Schraubklemmen und belegt am Arduino nur **SDA/SCL (D20/D21)**.
 - **Helligkeitsimpuls (S32):** nativer **Interrupt-Pin (D2)** — nicht über den Expander.
 - **Reserviert fürs Ethernet-Shield (SPI):** D50–D53, D10 (CS), D4 (SD).
@@ -82,7 +82,7 @@ schaltet (Gang, Küche, Aussenlampe …) steht unter **Funktionsumfang** bzw. im
 
 *(Klemme `LB7` frei.)*
 
-### Ausgänge (Relaismodule, native Arduino-Pins, active-LOW)
+### Ausgänge (Relaismodule, native Arduino-Pins, active-HIGH)
 
 | Nr | Pin | Funktion |
 |---|---|---|
@@ -114,10 +114,19 @@ schaltet (Gang, Küche, Aussenlampe …) steht unter **Funktionsumfang** bzw. im
 | L26 | D47 | Notlicht Gang EG |
 | L27 | D48 | Ventilator WC EG |
 | L28 | D49 | Lampe WC EG |
-| L29 | D50 | Lampe Küche oberhalb Insel EG |
-| L30 | D51 | Lampe Küche/Gang EG |
-| L31 | D52 | Lampe Küche oberhalb Esstisch EG |
-| L32 | D53 | Scheibenheizung Bad OG |
+| L29 | D5  | Lampe Küche oberhalb Insel EG |
+| L30 | D6  | Lampe Küche/Gang EG |
+| L31 | D7  | Lampe Küche oberhalb Esstisch EG |
+| L32 | D8  | Scheibenheizung Bad OG |
+
+## Webserver / Remote
+
+Über das **Ethernet-Shield** läuft ein kleiner Webserver zur **Visualisierung** aller Ein-/Ausgänge:
+- Statische IP im Sketch: **`192.168.1.177`, Port `80`** (an dein Hausnetz anpassen: `web_ip` / `web_mac`).
+- Zeigt Hauptschalter, „Alle Lampen", Helligkeit sowie **L1–L32** und **S1–S31** als farbige Kacheln (grün = ein).
+- **Auto-Refresh** alle 2 s (HTTP-`Refresh`-Header, kein JavaScript); Antwort wird direkt gestreamt (`F()`-Strings) → minimaler RAM.
+- Belegt SPI (`D50–D53`, CS `D10`, SD `D4`).
+- Späterer Ausbau möglich: Schaltbefehle per Web, MQTT/Home-Assistant, RTC-Zeitsync.
 
 ## Build
 

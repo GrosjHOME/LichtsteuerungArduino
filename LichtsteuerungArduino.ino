@@ -4,14 +4,18 @@
 //
 //  Hardware-Konzept:
 //   - Ausgaenge (L1..L32): 4x 8-Kanal-Relaismodul DIREKT an native Pins (active-HIGH)
+//     L29..L32 liegen auf D5..D8 (SPI D50-53 bleibt fuer das Ethernet-Shield frei)
 //   - Eingaenge (S1..S31): 1x DIN-Board mit 2x MCP23017 (I2C, Schraubklemmen)
 //   - Helligkeitsimpuls (S32): nativer Interrupt-Pin (D2)
+//   - Ethernet-Shield (SPI): kleiner Webserver zur Visualisierung
 //
 //  E/A-Belegung siehe README.
 // ============================================================================
 
 #include <Wire.h>
 #include <Adafruit_MCP23X17.h>
+#include <SPI.h>
+#include <Ethernet.h>
 #include "Wechselschaltung.h"
 
 // ----- Zeit-Konstanten (ms) -----
@@ -25,7 +29,7 @@ const int H_AUSSEN = 4;    // Aussenlampe
 // ----- Ausgaenge L1..L32 -> native Arduino-Pins (active-HIGH) -----
 const uint8_t OUT[33] = { 0,
   22,23,24,25,26,27,28,29,30,31, 32,33,34,35,36,37,38,39,40,41,
-  42,43,44,45,46,47,48,49,50,51, 52,53 };
+  42,43,44,45,46,47,48,49,5,6, 7,8 };   // L29-L32 auf D5-D8 (SPI D50-53 frei)
 
 // ----- Eingaenge ueber 2x MCP23017 (I2C) -----
 Adafruit_MCP23X17 mcpH;              // Chip "High" (ICH): Klemmen HA0..HB7 -> S1..S16
@@ -33,13 +37,12 @@ Adafruit_MCP23X17 mcpL;              // Chip "Low"  (ICL): Klemmen LA0..LB7 -> S
 const uint8_t MCP_ADDR_H = 0x20;    // per DIP-Schalter am Board einstellen!
 const uint8_t MCP_ADDR_L = 0x21;
 const bool INPUT_ACTIVE_LOW = true; // Kontakt gegen GND (INPUT_PULLUP). Bei +Signal: false.
-uint16_t gH = 0xFFFF, gL = 0xFFFF;  // zuletzt gelesene GPIO-Register (idle = high)
+uint16_t gH = 0xFFFF, gL_reg = 0xFFFF;
 
 const uint8_t PIN_HELL = 2;         // S32 Helligkeitsimpuls (nativ, INT0)
 
-// S-Nr (1..31) -> entprellter Roh-Aktivzustand aus dem passenden MCP-Register
 bool readS(uint8_t n) {
-  uint16_t g = (n <= 16) ? gH : gL;         // S1..S16 = Chip H, S17..S31 = Chip L
+  uint16_t g = (n <= 16) ? gH : gL_reg;     // S1..S16 = Chip H, S17..S31 = Chip L
   uint8_t bit = (n <= 16) ? (n - 1) : (n - 17);
   bool level = (g >> bit) & 0x1;            // 1 = HIGH
   return INPUT_ACTIVE_LOW ? !level : level;
@@ -79,9 +82,9 @@ Wechselschaltung wAussen(NO_PIN, false, 0, 2*STUNDE);   // Aussen manuell (bL21)
 Wechselschaltung wStore (OUT[7], false, 0, 11*SEK);     // Rollladen Fahren (L7)
 
 // ----- Eingaenge (Entprellung) + Zentralfunktionen + Uhr -----
-DebIn taste[32];                               // taste[1..31]
-LangdruckToggle hauptschalter(4*SEK, true);    // 4s Langdruck; Start = ein
-LangdruckToggle alleLampen   (2*SEK, false);   // 2s Langdruck (bei Hauptschalter)
+DebIn taste[32];
+LangdruckToggle hauptschalter(4*SEK, true);
+LangdruckToggle alleLampen   (2*SEK, false);
 Uhr uhr;
 Ton storeStartTon;
 
@@ -98,6 +101,56 @@ void onHellPulse() { g_hellPulse++; }
 bool storeDirAb = false;
 unsigned long tStore = 11*SEK;
 
+// ============================================================================
+//  Ethernet / Webserver (Visualisierung Ein-/Ausgaenge)
+// ============================================================================
+byte      web_mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
+IPAddress web_ip(192, 168, 1, 177);        // an Hausnetz anpassen
+EthernetServer web_server(80);
+// Momentanwerte fuer die Anzeige
+bool gS[32];          // Eingaenge S1..S31
+bool gLout[33];       // Ausgaenge L1..L32 (zurueckgelesen)
+int  gHell = 0; bool gHaupt = false, gAlle = false;
+
+void webBox(EthernetClient& c, char p, uint8_t n, bool on) {
+  c.print(F("<span class=b style='background:"));
+  c.print(on ? F("#2ecc71") : F("#444"));
+  c.print(F("'>")); c.print(p); c.print(n); c.print(F("</span>"));
+}
+
+void handleWeb() {
+  EthernetClient client = web_server.available();
+  if (!client) return;
+  bool blank = true;                         // Request bis Leerzeile verwerfen
+  while (client.connected() && client.available()) {
+    char ch = client.read();
+    if (ch == '\n' && blank) break;
+    if (ch == '\n') blank = true; else if (ch != '\r') blank = false;
+  }
+  client.println(F("HTTP/1.1 200 OK"));
+  client.println(F("Content-Type: text/html; charset=utf-8"));
+  client.println(F("Connection: close"));
+  client.println(F("Refresh: 2"));           // Auto-Refresh alle 2 s
+  client.println();
+  client.print(F("<!DOCTYPE html><html><head><meta name=viewport content='width=device-width,initial-scale=1'>"
+                 "<title>Lichtsteuerung</title><style>body{font-family:sans-serif;background:#111;color:#eee;margin:12px}"
+                 ".b{display:inline-block;width:34px;text-align:center;margin:2px;padding:5px 0;border-radius:4px;color:#fff;font-size:12px}"
+                 "h1{font-size:19px}h2{margin:14px 0 4px;font-size:15px}</style></head><body>"));
+  client.print(F("<h1>Lichtsteuerung</h1><p>Hauptschalter: <b>"));
+  client.print(gHaupt ? F("EIN") : F("AUS"));
+  client.print(F("</b> &nbsp; Alle Lampen: <b>"));
+  client.print(gAlle ? F("EIN") : F("AUS"));
+  client.print(F("</b> &nbsp; Helligkeit: <b>"));
+  client.print(gHell);
+  client.print(F("</b></p><h2>Ausgaenge L1-L32</h2>"));
+  for (uint8_t n = 1; n <= 32; n++) webBox(client, 'L', n, gLout[n]);
+  client.print(F("<h2>Eingaenge S1-S31</h2>"));
+  for (uint8_t n = 1; n <= 31; n++) webBox(client, 'S', n, gS[n]);
+  client.print(F("</body></html>"));
+  delay(1);
+  client.stop();
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -112,7 +165,7 @@ void setup() {
   pinMode(OUT[30], OUTPUT);
   digitalWrite(OUT[20], LOW);   // L20 unbenutzt
 
-  // Eingaenge: MCP23017 initialisieren
+  // Eingaenge: MCP23017
   Wire.begin();
   if (!mcpH.begin_I2C(MCP_ADDR_H)) Serial.println(F("MCP H (ICH) nicht gefunden!"));
   if (!mcpL.begin_I2C(MCP_ADDR_L)) Serial.println(F("MCP L (ICL) nicht gefunden!"));
@@ -125,8 +178,12 @@ void setup() {
   pinMode(PIN_HELL, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PIN_HELL), onHellPulse, RISING);
 
+  // Ethernet / Webserver
+  Ethernet.begin(web_mac, web_ip);
+  web_server.begin();
+  Serial.print(F("Web: http://")); Serial.println(Ethernet.localIP());
+
   // Uhrzeit: idealerweise aus DS3231 (RTClib) setzen -> uhr.setze(h,m,s);
-  // Ohne RTC bleiben die Zeitfenster inaktiv (nur Handbetrieb).
 
   Serial.println(F("Lichtsteuerung gestartet"));
 }
@@ -134,7 +191,7 @@ void setup() {
 void loop() {
   // ---------- Eingaenge lesen (beide MCP-Register je 1 I2C-Zugriff) ----------
   gH = mcpH.readGPIOAB();
-  gL = mcpL.readGPIOAB();
+  gL_reg = mcpL.readGPIOAB();
   bool s[32];
   for (uint8_t n = 1; n <= 31; n++) s[n] = taste[n].update(readS(n));
 
@@ -171,8 +228,7 @@ void loop() {
   digitalWrite(OUT[8], storeDirAb ? HIGH : LOW);// L8 = Richtung
 
   // ---------- Scheibenheizung + Ventilator Bad OG ----------
-  // Ausloesung durch Kalt-/Feuchte-Sensor S31 oder Handschalter S12 (SPS-Altlast bereinigt).
-  bool bVenti = s[31] || s[12];
+  bool bVenti = s[31] || s[12];                 // Sensor S31 oder Hand S12 (SPS-Altlast bereinigt)
   wL32.setAsZeit(s[31] ? 40*MINUTE : 10*MINUTE);
   wL32.update(bVenti, haupt);                   // Scheibenheizung L32
   wL12.update(bVenti, haupt);                   // Ventilator Bad L12
@@ -219,6 +275,12 @@ void loop() {
   bool autoAussen = (helligkeit < H_AUSSEN)
                  && (sek < 22UL*3600UL) && (sek > 16UL*3600UL) && !l22;
   digitalWrite(OUT[21], (autoAussen || bL21) ? HIGH : LOW);   // L21
+
+  // ---------- Zustaende fuer die Web-Visualisierung ----------
+  for (uint8_t n = 1; n <= 31; n++) gS[n] = s[n];
+  for (uint8_t n = 1; n <= 32; n++) gLout[n] = digitalRead(OUT[n]);
+  gHell = helligkeit; gHaupt = haupt; gAlle = alle;
+  handleWeb();
 
   delay(10);
 }
