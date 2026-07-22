@@ -8,8 +8,9 @@
 //  (Ueberlauf nach ~49,7 Tagen wird korrekt behandelt).
 // ============================================================================
 
+static const uint8_t NO_PIN = 255;   // logischer Ausgang (kein physischer Pin)
+
 // --- Einschaltverzoegerung (entspricht TON) -------------------------------
-// Q = true, wenn IN ununterbrochen fuer PT ms true war.
 class Ton {
   bool running = false;
   unsigned long t0 = 0;
@@ -22,7 +23,6 @@ public:
 };
 
 // --- Ausschaltverzoegerung / Nachlauf (entspricht TOF) --------------------
-// Q folgt IN; nach fallender Flanke bleibt Q noch PT ms true.
 class Tof {
   bool q = false;
   bool prev = false;
@@ -32,7 +32,7 @@ public:
     if (in) {
       q = true;
     } else {
-      if (prev) tOff = millis();                         // fallende Flanke merken
+      if (prev) tOff = millis();
       if (q && (unsigned long)(millis() - tOff) >= pt) q = false;
     }
     prev = in;
@@ -47,41 +47,42 @@ public:
   bool rising(bool in) { bool r = in && !prev; prev = in; return r; }
 };
 
-// --- Entprellter Eingang --------------------------------------------------
-// activeLow=true  -> Taster/Schalter gegen GND (INPUT_PULLUP)
+// --- Entprellter Eingang (arraytauglich: Default-Ctor + attach) ------------
+// activeLow=true  -> Kontakt gegen GND (INPUT_PULLUP)
 // activeLow=false -> Signal fuehrt +Pegel (INPUT; externen Pulldown vorsehen!)
-// WICHTIG: Polaritaet an die reale Verdrahtung der Vorschalt-Relais anpassen.
 class DebIn {
-  uint8_t pin;
-  unsigned long db;
-  bool activeLow;
+  uint8_t pin = NO_PIN;
+  unsigned long db = 30;
+  bool activeLow = true;
   bool raw = false, state = false;
   unsigned long tCh = 0;
 public:
-  DebIn(uint8_t p, bool activeLow_ = true, unsigned long debounceMs = 30)
-    : pin(p), db(debounceMs), activeLow(activeLow_) {}
-  void begin() { pinMode(pin, activeLow ? INPUT_PULLUP : INPUT); }
+  DebIn() {}
+  DebIn(uint8_t p, bool activeLow_ = true, unsigned long debounceMs = 30) { attach(p, activeLow_, debounceMs); }
+  void attach(uint8_t p, bool activeLow_ = true, unsigned long debounceMs = 30) { pin = p; activeLow = activeLow_; db = debounceMs; }
+  void begin() { if (pin != NO_PIN) pinMode(pin, activeLow ? INPUT_PULLUP : INPUT); }
   bool read() {
+    if (pin == NO_PIN) return false;
     bool r = (digitalRead(pin) == (activeLow ? LOW : HIGH));
-    if (r != raw) { raw = r; tCh = millis(); }              // Zustandswechsel -> Zeit neu
-    if ((unsigned long)(millis() - tCh) >= db) state = raw; // stabil laenger als db -> uebernehmen
+    if (r != raw) { raw = r; tCh = millis(); }
+    if ((unsigned long)(millis() - tCh) >= db) state = raw;
     return state;
   }
 };
 
 // --- Kern-Baustein: Wechselschaltung (entspricht dem STEP7-FB) ------------
-//  Taster-Modus  (schalter=false): Tastendruck toggelt den Ausgang;
-//                 Auto-Aus nach maxZeit; AlleLampenEin schaltet zusaetzlich
-//                 ein; Hauptschalter gibt frei.
-//  Schalter-Modus(schalter=true) : Ausgang folgt dem Eingang mit Nachlauf
-//                 asZeit; Hauptschalter-gegated; maxZeit/AlleLampen ohne Wirkung.
+//  Taster-Modus  (schalter=false): Tastendruck toggelt; Auto-Aus nach maxZeit;
+//                 AlleLampenEin schaltet zusaetzlich ein; Hauptschalter gibt frei.
+//  Schalter-Modus(schalter=true) : Ausgang folgt Eingang mit Nachlauf asZeit;
+//                 Hauptschalter-gegated; maxZeit/AlleLampen ohne Wirkung.
+//  outPin == NO_PIN -> nur logischer Ausgang (Rueckgabewert), kein Pin.
 class Wechselschaltung {
   uint8_t outPin;
-  bool schalter;            // == KeinImpuls im FB
-  unsigned long asZeit;     // Nachlauf (Schalter-Modus)
-  unsigned long maxZeit;    // max. Einschaltzeit (Taster-Modus)
-  bool ml1 = false;         // Toggle-Merker (entspricht ML1)
-  bool lampeEin = false;    // entspricht bLampeEIN
+  bool schalter;
+  unsigned long asZeit;
+  unsigned long maxZeit;
+  bool ml1 = false;
+  bool lampeEin = false;
   REdge edge;
   Ton  maxTimer;
   Tof  nachlauf;
@@ -89,28 +90,26 @@ public:
   Wechselschaltung(uint8_t pin, bool schalter_, unsigned long asZeit_, unsigned long maxZeit_)
     : outPin(pin), schalter(schalter_), asZeit(asZeit_), maxZeit(maxZeit_) {}
 
-  void begin() { pinMode(outPin, OUTPUT); digitalWrite(outPin, LOW); }
+  void begin() { if (outPin != NO_PIN) { pinMode(outPin, OUTPUT); digitalWrite(outPin, LOW); } }
+  void setAsZeit(unsigned long v)  { asZeit = v; }    // dynamische Nachlaufzeit (z.B. Scheibenheizung)
+  void setMaxZeit(unsigned long v) { maxZeit = v; }   // dynamische Max-Zeit (z.B. Rollladen-Fahrzeit)
 
-  // Gibt den Lampenzustand zurueck und setzt den physischen Ausgang.
   bool update(bool iSchalter, bool hauptschalter, bool alleLampenEin = false) {
     bool q;
     if (schalter) {
       q = nachlauf.update(iSchalter, asZeit) && hauptschalter;
     } else {
-      bool maxErreicht = maxTimer.update(lampeEin, maxZeit);   // MAXTIME(IN:=bLampeEIN)
-      if (edge.rising(iSchalter || maxErreicht)) ml1 = !ml1;   // FP + XOR (Toggle)
+      bool maxErreicht = maxTimer.update(lampeEin, maxZeit);
+      if (edge.rising(iSchalter || maxErreicht)) ml1 = !ml1;
       lampeEin = (ml1 || alleLampenEin) && hauptschalter;
       q = lampeEin;
     }
-    digitalWrite(outPin, q ? HIGH : LOW);
+    if (outPin != NO_PIN) digitalWrite(outPin, q ? HIGH : LOW);
     return q;
   }
-
-  bool istEin() const { return schalter ? false : lampeEin; }
 };
 
-// --- Zentralfunktion: Langdruck-Toggle (entspricht Hauptschalter/AlleLampen in OB1) ---
-//  Haelt man das Sammelsignal >= haltezeit gedrueckt, kippt der Zustand einmal.
+// --- Zentralfunktion: Langdruck-Toggle (Hauptschalter / Alle Lampen, OB1) --
 class LangdruckToggle {
   unsigned long haltezeit;
   Ton   timer;
@@ -119,14 +118,33 @@ class LangdruckToggle {
 public:
   LangdruckToggle(unsigned long haltezeitMs, bool startZustand = false)
     : haltezeit(haltezeitMs), zustand(startZustand) {}
-  // sammel   = ODER der relevanten Taster (PIR/Sensoren bewusst ausnehmen!)
-  // freigabe = Vorbedingung (z.B. Hauptschalter fuer "Alle Lampen")
   bool update(bool sammel, bool freigabe = true) {
     if (edge.rising(timer.update(sammel && freigabe, haltezeit))) zustand = !zustand;
     return zustand;
   }
   bool get() const { return zustand; }
   void set(bool z) { zustand = z; }
+};
+
+// --- Uhrzeit (Sekunden des Tages) -----------------------------------------
+//  Ersetzt READ_CLK/DT_TOD der SPS. Softwareuhr auf millis()-Basis; muss per
+//  setze(...) synchronisiert werden (idealerweise beim Start aus einem DS3231).
+//  Solange nicht gesetzt -> 0 (Zeitfenster damit inaktiv, nur Handbetrieb).
+class Uhr {
+  uint32_t basisSek = 0;
+  unsigned long basisMs = 0;
+  bool gesetzt = false;
+public:
+  void setze(uint8_t h, uint8_t m, uint8_t s) {
+    basisSek = (uint32_t)h * 3600UL + (uint32_t)m * 60UL + s;
+    basisMs = millis(); gesetzt = true;
+  }
+  uint32_t sekDesTages() {
+    if (!gesetzt) return 0;
+    unsigned long d = (millis() - basisMs) / 1000UL;
+    return (uint32_t)((basisSek + d) % 86400UL);
+  }
+  bool istGesetzt() const { return gesetzt; }
 };
 
 #endif // WECHSELSCHALTUNG_H

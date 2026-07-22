@@ -36,8 +36,22 @@ arduino-cli compile --fqbn arduino:avr:mega --warnings all LichtsteuerungArduino
 ```
 CI baut den Sketch automatisch bei jedem Push/PR (siehe Badge oben).
 
-## Status / TODO
+## Funktionsumfang
 
-Grundgerüst (Kernlogik + Zentralfunktionen) steht. Noch nachzubilden:
-Gang (PIR + Helligkeit + Notlicht), Rollladen (Fahren + Richtung), Aussenlampe
-(dämmerungs-/zeitabhängig, RTC), Helligkeitszählung, Watchdog/RTC-Integration.
+Die komplette SPS-Logik ist portiert:
+- Alle Verbraucher (Lampen/Steckdosen/Ventilatoren) mit Taster- bzw. Schalter-Verhalten und Max-/Nachlaufzeiten
+- Zentralfunktionen Hauptschalter / „Alle Lampen" (Langdruck)
+- Gang OG: PIR + Helligkeit + Notlicht; Gang EG: 3 Taster + Notlicht + Küche/Gang-Kopplung
+- Küche Insel, vom Gang (S15) ausschaltbar
+- Rollladen (Fahren + Richtung, Fahrzeiten)
+- Scheibenheizung Bad + Ventilator (gekoppelt)
+- Aussenlampe dämmerungs-/zeitabhängig + manuell
+- Helligkeitsmessung per Impulszählung
+
+## Noch offen (Hardware/Betrieb)
+
+- **RTC (DS3231)** anbinden und `uhr.setze(...)` im Setup füllen — ohne RTC sind die
+  Zeitfenster inaktiv (nur Handbetrieb).
+- **Watchdog** aktivieren, Zustandsverhalten nach Netz-Ein festlegen.
+- **Pinbelegung** an die reale Verdrahtung anpassen; ggf. MCP23017-Expander.
+- Auf realer Hardware testen (hier nur Kompilier-Check).
