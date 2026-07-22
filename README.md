@@ -28,7 +28,7 @@ erfolgt weiterhin **extern über Relais**.
 - **Ausgänge (32 Relais):** 4× **8-Kanal-Relaismodul** (5 V, Stiftleiste) **direkt an native Arduino-Pins**, **active-HIGH** (IN = HIGH → Relais an, wie bei der SPS). `L29–L32` liegen auf `D5–D8`, damit die SPI-Pins `D50–D53` fürs Ethernet-Shield frei bleiben. Relaisspulen über **separate 5-V-Versorgung** (JD-VCC), nicht aus dem Arduino-Regler.
 - **Eingänge (32 Kanäle):** 1× DIN-Board mit **2× MCP23017** (I²C, Schraubklemmen) — passt zu den Interface-Relais mit Schraubklemmen und belegt am Arduino nur **SDA/SCL (D20/D21)**.
 - **Helligkeitsimpuls (S32):** nativer **Interrupt-Pin (D2)** — nicht über den Expander.
-- **Reserviert fürs Ethernet-Shield (SPI):** D50–D53, D10 (CS), D4 (SD).
+- **SPI fürs Ethernet-Shield:** Beim Mega ist die Hardware-SPI **D50 (MISO) / D51 (MOSI) / D52 (SCK)** — **dieselben Leitungen, die das Shield über den ICSP-Header nutzt** (auch wenn es vorne aufgesteckt ist). Also `D50–D52` für nichts anderes belegen; **D53** (SS) muss OUTPUT bleiben; **D10** = W5x-CS, **D4** = SD-CS.
 - Geplant: **DS3231 RTC** (Uhrzeit, am selben I²C-Bus), **Watchdog**, Zustandssicherung nach Netz-Ein.
 - **Eingangs-Polarität** (`activeLow`) an die Interface-Relais anpassen (nie > 5 V auf einen Kanal).
 
