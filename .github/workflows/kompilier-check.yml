@@ -1,0 +1,34 @@
+# Kompilier-Check: baut den Sketch bei jedem Push/PR fuer den Arduino Mega.
+# Lokales Aequivalent (Sketch-Ordner muss LichtsteuerungArduino heissen):
+#   arduino-cli compile --fqbn arduino:avr:mega --warnings all LichtsteuerungArduino
+name: Kompilier-Check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v5
+
+      - name: arduino-cli installieren
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: AVR-Core installieren
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+
+      # Die Sketch-Dateien liegen im Repo-Root; arduino-cli verlangt aber einen
+      # Sketch-Ordner, der wie der Haupt-Sketch heisst (LichtsteuerungArduino).
+      # Es werden keine externen Bibliotheken benoetigt (nur Arduino-Core).
+      - name: Sketch-Ordner vorbereiten
+        run: |
+          mkdir -p /tmp/LichtsteuerungArduino
+          cp *.ino *.h /tmp/LichtsteuerungArduino/
+
+      - name: Sketch kompilieren (Mega)
+        run: arduino-cli compile --fqbn arduino:avr:mega --warnings all /tmp/LichtsteuerungArduino
