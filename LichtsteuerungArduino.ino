@@ -161,10 +161,10 @@ void loop() {
   digitalWrite(OUT[8], storeDirAb ? HIGH : LOW);// L8 = Richtung
 
   // ---------- Scheibenheizung + Ventilator Bad OG ----------
-  // bVentilatoScheibenHeiz = (Zeitfenster 10:00:05..10:00:10 & S31) | S12
-  // Hinweis: das 5-Sekunden-Zeitfenster ist 1:1 aus der SPS (fragwuerdig/Altlast).
-  bool zeitfenster = (sek > (10UL*3600UL+5UL)) && (sek < (10UL*3600UL+10UL));
-  bool bVenti = (zeitfenster && s[31]) || s[12];
+  // Ausloesung durch Kalt-/Feuchte-Sensor S31 oder Handschalter S12.
+  // (Bereinigt: die SPS hatte hier ein fehlerhaftes 5-Sekunden-Zeitfenster um
+  //  10:00:05-10 Uhr, das den S31-Pfad praktisch wirkungslos machte.)
+  bool bVenti = s[31] || s[12];
   wL32.setAsZeit(s[31] ? 40*MINUTE : 10*MINUTE);
   wL32.update(bVenti, haupt);                   // Scheibenheizung L32
   wL12.update(bVenti, haupt);                   // Ventilator Bad L12
