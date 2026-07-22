@@ -22,6 +22,9 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install arduino:avr
 
+      - name: Bibliotheken installieren
+        run: arduino-cli lib install "Adafruit MCP23017 Arduino Library" "Adafruit BusIO"
+
       # Die Sketch-Dateien liegen im Repo-Root; arduino-cli verlangt aber einen
       # Sketch-Ordner, der wie der Haupt-Sketch heisst (LichtsteuerungArduino).
       # Es werden keine externen Bibliotheken benoetigt (nur Arduino-Core).

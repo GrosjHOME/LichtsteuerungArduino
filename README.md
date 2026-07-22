@@ -39,8 +39,9 @@ MCP23017-Boards (`ICH`/`ICL`, Ports A/B). `S32` (Helligkeit) liegt am nativen Pi
 Die Spalte *Funktion* nennt die Bezeichnung laut SPS-Belegung; welche **Taste welche Lampe**
 schaltet (Gang, Küche, Aussenlampe …) steht unter **Funktionsumfang** bzw. im Code.
 
-> Hinweis: Der Sketch liest die Eingänge derzeit noch über native Pins (Bench-Test).
-> Die Umstellung auf den MCP23017 (I²C) ist der nächste Code-Schritt.
+> Die Eingänge werden über **2× MCP23017** (I²C) gelesen (`readGPIOAB()`, je 1 Zugriff/Zyklus).
+> I²C-Adressen im Sketch: `ICH = 0x20`, `ICL = 0x21` (am Board per DIP einstellen);
+> Polarität über `INPUT_ACTIVE_LOW`. Benötigt die Library *Adafruit MCP23017*.
 
 ### Eingänge (MCP23017-Board, Schraubklemmen)
 

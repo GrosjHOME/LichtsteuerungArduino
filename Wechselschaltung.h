@@ -47,24 +47,17 @@ public:
   bool rising(bool in) { bool r = in && !prev; prev = in; return r; }
 };
 
-// --- Entprellter Eingang (arraytauglich: Default-Ctor + attach) ------------
-// activeLow=true  -> Kontakt gegen GND (INPUT_PULLUP)
-// activeLow=false -> Signal fuehrt +Pegel (INPUT; externen Pulldown vorsehen!)
+// --- Entprellung (quellen-unabhaengig: bekommt den Roh-Zustand herein) -----
+//  Dieselbe Klasse dient fuer native Pins UND MCP23017-Kanaele; das Rohsignal
+//  wird von aussen (readS(...)) geliefert, die Polaritaet dort behandelt.
 class DebIn {
-  uint8_t pin = NO_PIN;
-  unsigned long db = 30;
-  bool activeLow = true;
-  bool raw = false, state = false;
+  unsigned long db;
+  bool state = false, raw = false;
   unsigned long tCh = 0;
 public:
-  DebIn() {}
-  DebIn(uint8_t p, bool activeLow_ = true, unsigned long debounceMs = 30) { attach(p, activeLow_, debounceMs); }
-  void attach(uint8_t p, bool activeLow_ = true, unsigned long debounceMs = 30) { pin = p; activeLow = activeLow_; db = debounceMs; }
-  void begin() { if (pin != NO_PIN) pinMode(pin, activeLow ? INPUT_PULLUP : INPUT); }
-  bool read() {
-    if (pin == NO_PIN) return false;
-    bool r = (digitalRead(pin) == (activeLow ? LOW : HIGH));
-    if (r != raw) { raw = r; tCh = millis(); }
+  DebIn(unsigned long debounceMs = 30) : db(debounceMs) {}
+  bool update(bool rawActive) {
+    if (rawActive != raw) { raw = rawActive; tCh = millis(); }
     if ((unsigned long)(millis() - tCh) >= db) state = raw;
     return state;
   }
