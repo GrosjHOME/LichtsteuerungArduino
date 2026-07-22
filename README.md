@@ -22,60 +22,66 @@ erfolgt weiterhin **extern über Relais**.
 - **`Ton` / `Tof`** – Ein-/Ausschaltverzögerung, **millis()-rollover-sicher**.
 - **`DebIn`** – entprellter Eingang (Polarität konfigurierbar).
 
-## Hardware
+## Hardware-Konzept
 
-- **Arduino Mega 2560**; Ausgänge auf die vorhandenen (extern entkoppelten) Relais.
-- Die **32 Eingänge + 32 Ausgänge** belegen den Mega fast vollständig (siehe Tabelle unten). Für Reserve / saubere Verdrahtung optional **I/O-Expander** (MCP23017 über I²C) – die Klassenlogik bleibt gleich.
-- Geplant: **DS3231 RTC** (Uhrzeit-Logik), **Watchdog**, Zustandssicherung nach Netz-Ein.
-- **Eingangs-Polarität** (`activeLow`) an die Vorschalt-Relais anpassen (nie > 5 V auf einen Pin).
+- **Arduino Mega 2560**, Anbindung ans Hausnetz über **Ethernet-Shield** (SPI, W5500 empfohlen) für Remote-Funktionen.
+- **Ausgänge (32 Relais):** 4× **8-Kanal-Relaismodul** (5 V, Stiftleiste) **direkt an native Arduino-Pins**. Diese Module sind meist **active-LOW** (IN = LOW → Relais an) → der Sketch invertiert die Ausgänge. Relaisspulen über **separate 5-V-Versorgung** (JD-VCC), nicht aus dem Arduino-Regler.
+- **Eingänge (32 Kanäle):** 1× DIN-Board mit **2× MCP23017** (I²C, Schraubklemmen) — passt zu den Interface-Relais mit Schraubklemmen und belegt am Arduino nur **SDA/SCL (D20/D21)**.
+- **Helligkeitsimpuls (S32):** nativer **Interrupt-Pin (D2)** — nicht über den Expander.
+- **Reserviert fürs Ethernet-Shield (SPI):** D50–D53, D10 (CS), D4 (SD).
+- Geplant: **DS3231 RTC** (Uhrzeit, am selben I²C-Bus), **Watchdog**, Zustandssicherung nach Netz-Ein.
+- **Eingangs-Polarität** (`activeLow`) an die Interface-Relais anpassen (nie > 5 V auf einen Kanal).
 
-## E/A-Belegung (Standard-Pinbelegung im Sketch)
+## E/A-Belegung
 
-Pins wie in `LichtsteuerungArduino.ino` (`IN[]` / `OUT[]` / `PIN_HELL`), an die reale
-Verdrahtung anpassbar. **Reserviert:** `D0/D1` = Serial (Debug), `D2` = Helligkeitsimpuls
-(INT0), `D13` = Onboard-LED (frei), `D20/D21` = I²C (SDA/SCL) für RTC.
+**Ausgänge** = native Arduino-Pins (Relaismodule). **Eingänge** = Schraubklemmen des
+MCP23017-Boards (`ICH`/`ICL`, Ports A/B). `S32` (Helligkeit) liegt am nativen Pin `D2`.
+Die Spalte *Funktion* nennt die Bezeichnung laut SPS-Belegung; welche **Taste welche Lampe**
+schaltet (Gang, Küche, Aussenlampe …) steht unter **Funktionsumfang** bzw. im Code.
 
-Die Spalte *Funktion* nennt die Bezeichnung laut SPS-Belegung. Welche **Taste welche Lampe**
-schaltet (inkl. Sonderfälle wie Gang, Küche, Aussenlampe) steht unter **Funktionsumfang** bzw. im Code.
+> Hinweis: Der Sketch liest die Eingänge derzeit noch über native Pins (Bench-Test).
+> Die Umstellung auf den MCP23017 (I²C) ist der nächste Code-Schritt.
 
-### Eingänge (Taster / Sensoren)
+### Eingänge (MCP23017-Board, Schraubklemmen)
 
-| Nr | Pin | Funktion |
+| Nr | Klemme | Funktion |
 |---|---|---|
-| S1  | D4  | Lampe Zimmer Mitte OG |
-| S2  | D5  | Steckdose Zimmer Süd OG |
-| S3  | D6  | Lampe Zimmer Südost OG |
-| S4  | D7  | Lampe Zimmer Südwest OG |
-| S5  | D8  | Steckdose Zimmer Südwest OG |
-| S6  | D9  | Steckdose Zimmer Mitte OG |
-| S7  | D10 | Store auf – Zimmer Südwest OG |
-| S8  | D11 | Store ab – Zimmer Südwest OG |
-| S9  | D12 | Steckdose Zimmer Nordost OG |
-| S10 | D14 | Lampe Zimmer Nordost OG |
-| S11 | D15 | PIR Bewegungsmelder, Gang OG |
-| S12 | D16 | Ventilator Bad OG |
-| S13 | D17 | Lampen Douche, Bad OG |
-| S14 | D18 | Lampen Spiegel Bad OG |
-| S15 | D19 | Taster Gang EG (auch „Küche-Insel aus") |
-| S16 | A0  | Steckdose Zimmer Nordost EG |
-| S17 | A1  | Lampe Zimmer Nordost EG |
-| S18 | A2  | Steckdose Zimmer Mitteost EG |
-| S19 | A3  | Lampe Zimmer Mitteost EG |
-| S20 | A4  | Aussenlampe Süd (manuell) |
-| S21 | A5  | Lampe oberhalb Ofen Wohnzimmer EG |
-| S22 | A6  | Steckdose Wohnzimmer |
-| S23 | A7  | Lampe Vorraum Nordwest EG |
-| S24 | A8  | Taster Gang EG |
-| S25 | A9  | Ventilator WC EG |
-| S26 | A10 | Lampe WC EG |
-| S27 | A11 | Lampe Küche oberhalb Insel EG |
-| S28 | A12 | Lampe Küche oberhalb Insel EG |
-| S29 | A13 | Taster Gang EG |
-| S30 | A14 | Lampe Küche oberhalb Esstisch EG |
-| S31 | A15 | Sensor Scheibenheizung Bad (kalt/feucht) |
-| S32 | D2 (INT0) | Helligkeitssensor (Impuls) |
+| S1  | HA0 | Lampe Zimmer Mitte OG |
+| S2  | HA1 | Steckdose Zimmer Süd OG |
+| S3  | HA2 | Lampe Zimmer Südost OG |
+| S4  | HA3 | Lampe Zimmer Südwest OG |
+| S5  | HA4 | Steckdose Zimmer Südwest OG |
+| S6  | HA5 | Steckdose Zimmer Mitte OG |
+| S7  | HA6 | Store auf – Zimmer Südwest OG |
+| S8  | HA7 | Store ab – Zimmer Südwest OG |
+| S9  | HB0 | Steckdose Zimmer Nordost OG |
+| S10 | HB1 | Lampe Zimmer Nordost OG |
+| S11 | HB2 | PIR Bewegungsmelder, Gang OG |
+| S12 | HB3 | Ventilator Bad OG |
+| S13 | HB4 | Lampen Douche, Bad OG |
+| S14 | HB5 | Lampen Spiegel Bad OG |
+| S15 | HB6 | Taster Gang EG (auch „Küche-Insel aus") |
+| S16 | HB7 | Steckdose Zimmer Nordost EG |
+| S17 | LA0 | Lampe Zimmer Nordost EG |
+| S18 | LA1 | Steckdose Zimmer Mitteost EG |
+| S19 | LA2 | Lampe Zimmer Mitteost EG |
+| S20 | LA3 | Aussenlampe Süd (manuell) |
+| S21 | LA4 | Lampe oberhalb Ofen Wohnzimmer EG |
+| S22 | LA5 | Steckdose Wohnzimmer |
+| S23 | LA6 | Lampe Vorraum Nordwest EG |
+| S24 | LA7 | Taster Gang EG |
+| S25 | LB0 | Ventilator WC EG |
+| S26 | LB1 | Lampe WC EG |
+| S27 | LB2 | Lampe Küche oberhalb Insel EG |
+| S28 | LB3 | Lampe Küche oberhalb Insel EG |
+| S29 | LB4 | Taster Gang EG |
+| S30 | LB5 | Lampe Küche oberhalb Esstisch EG |
+| S31 | LB6 | Sensor Scheibenheizung Bad (kalt/feucht) |
+| S32 | D2 (nativ, INT0) | Helligkeitssensor (Impuls) |
 
-### Ausgänge (Relais)
+*(Klemme `LB7` frei.)*
+
+### Ausgänge (Relaismodule, native Arduino-Pins, active-LOW)
 
 | Nr | Pin | Funktion |
 |---|---|---|
